@@ -1,0 +1,27 @@
+{
+  "name": "pj-senai-barueri-fitcoach",
+  "version": "1.0.0",
+  "description": "Agente Inteligente Nutricionista e Personal Trainer com Dashboard de Evolução Semanal",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "personal-trainer",
+    "nutricionista",
+    "chatbot",
+    "openai",
+    "express"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "openai": "^7.10.0",
+    "src": "^1.1.2"
+  }
+}
