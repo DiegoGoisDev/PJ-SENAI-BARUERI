@@ -1,85 +1,72 @@
 /**
  * NutriFit - Assistente Virtual (Alimentação • Treino • Resultados) - Front-end
- * Comunicação com a API Node.js/Express via Fetch API.
+ * Chat com painel lateral de conversas (projetos), estilo Claude.
  *
  * Contrato da API:
- *   POST /chat           -> entrada { mensagem } / saída { response }
- *   POST /nova-conversa  -> reinicia o histórico no servidor
+ *   POST /chat           -> { mensagem, conversaId? } / saída { response }
+ *   POST /nova-conversa  -> { conversaId? } reinicia o histórico no servidor
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  // ⚙️ URL da API do back-end.
-  // - Deixe vazio ('') para detectar automaticamente (recomendado em desenvolvimento).
-  // - Ao hospedar o back-end em outro endereço, coloque a URL aqui.
-  //   Ex.: 'https://minha-api.onrender.com'
+  // URL da API do back-end (detecção automática em desenvolvimento)
   const API_URL_CONFIG = '';
+  const PORT_API = 3000;
 
-  const PORT_API = 3000; // porta do servidor Node/Express
-
-  // Detecta automaticamente onde a API está rodando:
-  // - Servido pelo próprio Express (mesma porta) -> usa a origem atual.
-  // - Aberto via arquivo ou LiveServer (ex.: porta 5500) -> aponta para localhost:PORT_API.
   function resolveApiBaseUrl() {
     if (API_URL_CONFIG) return API_URL_CONFIG.replace(/\/$/, '');
-
     const { protocol, hostname, port, origin } = window.location;
-
-    // Aberto direto do arquivo (file://)
     if (protocol === 'file:') return `http://localhost:${PORT_API}`;
-
-    // Ambiente local (localhost/127.0.0.1) em porta diferente da API (ex.: LiveServer)
     const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
-    if (isLocal && port !== String(PORT_API)) {
-      return `${protocol}//${hostname}:${PORT_API}`;
-    }
-
-    // Caso padrão: front-end e API na mesma origem
+    if (isLocal && port !== String(PORT_API)) return `${protocol}//${hostname}:${PORT_API}`;
     return origin;
   }
-
   const API_BASE_URL = resolveApiBaseUrl();
 
-  const STORAGE_KEY = 'nutrifit_chat_v1';
+  const STORE_KEY = 'nutrifit_store_v1';
   const THEME_KEY = 'nutrifit_theme';
 
-  // Mensagem de boas-vindas exibida no início e após "Nova Conversa"
   const WELCOME = {
     role: 'assistant',
     content: 'Fala, campeão(ã)! Bora pra cima! 💪\nBem-vindo(a) à **NutriFit** — mais saúde, mais energia, mais vida! Posso montar sua **rotina diária**, seu treino ou sua dieta. Me conta seu objetivo (ganhar massa, emagrecer ou saúde) que eu já organizo o seu dia!',
     time: 'Agora',
   };
 
-  // Histórico da conversa (mantido durante toda a sessão)
-  let messages = [];
+  // Estado: várias conversas (projetos), cada uma com seu histórico
+  let store = { conversas: [], activeId: null };
   let isSending = false;
 
-  // Elementos do DOM
+  // ---------- Elementos ----------
   const chatMessages = document.getElementById('chatMessages');
   const chatForm = document.getElementById('chatForm');
   const chatInput = document.getElementById('chatInput');
   const btnSend = document.getElementById('btnSendMessage');
-  const btnNewChat = document.getElementById('btnNewChat');
-  const btnToggleTheme = document.getElementById('btnToggleTheme');
   const typingIndicator = document.getElementById('typingIndicator');
   const msgCounter = document.getElementById('msgCounter');
   const chipButtons = document.querySelectorAll('.chip-btn');
+  const btnToggleTheme = document.getElementById('btnToggleTheme');
   const iconMoon = document.querySelector('.icon-moon');
   const iconSun = document.querySelector('.icon-sun');
+  // Sidebar
+  const appShell = document.querySelector('.app-shell');
+  const listaConversas = document.getElementById('listaConversas');
+  const btnNovaConversa = document.getElementById('btnNovaConversa');
+  const btnNewChat = document.getElementById('btnNewChat');
+  const searchConversas = document.getElementById('searchConversas');
+  const btnToggleSidebar = document.getElementById('btnToggleSidebar');
+  const btnCloseSidebar = document.getElementById('btnCloseSidebar');
+  const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+  let filtroBusca = '';
 
   // ========================================================
   // Utilidades
   // ========================================================
   function escapeHtml(str) {
     if (!str) return '';
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
   }
 
-  // Markdown simples: **negrito**, *itálico*, bullets e quebras de linha
   function formatMessage(text) {
     let out = escapeHtml(text);
     out = out.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
@@ -90,42 +77,45 @@ document.addEventListener('DOMContentLoaded', () => {
     return out;
   }
 
-  function nowTime() {
-    return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  }
-
-  function scrollToBottom() {
-    if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
-  }
-
-  function updateCounter() {
-    if (!msgCounter) return;
-    const n = messages.filter(m => m.role !== 'system').length;
-    msgCounter.textContent = `${n} ${n === 1 ? 'msg' : 'msgs'}`;
-  }
+  const nowTime = () => new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const scrollToBottom = () => { if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight; };
+  const genId = () => `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
   // ========================================================
-  // Persistência (LocalStorage - bônus)
+  // Persistência do estado (LocalStorage)
   // ========================================================
-  function saveHistory() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-    } catch (e) {
-      console.warn('Não foi possível salvar no localStorage:', e);
-    }
+  function novaConversaObj() {
+    return { id: genId(), title: 'Nova conversa', messages: [{ ...WELCOME, time: 'Agora' }], updatedAt: Date.now() };
   }
 
-  function loadHistory() {
+  function saveStore() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); }
+    catch (e) { console.warn('Falha ao salvar:', e); }
+  }
+
+  function loadStore() {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length) return parsed;
+      const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+      if (saved && Array.isArray(saved.conversas) && saved.conversas.length) {
+        store = saved;
+        if (!store.conversas.find(c => c.id === store.activeId)) store.activeId = store.conversas[0].id;
+        return;
       }
-    } catch (e) {
-      console.warn('Não foi possível ler o localStorage:', e);
+    } catch (e) { console.warn('Falha ao ler estado:', e); }
+    const c = novaConversaObj();
+    store = { conversas: [c], activeId: c.id };
+    saveStore();
+  }
+
+  const getActive = () => store.conversas.find(c => c.id === store.activeId);
+
+  function tituloDaConversa(conv) {
+    const primeiraUser = conv.messages.find(m => m.role === 'user');
+    if (primeiraUser) {
+      const t = primeiraUser.content.trim().replace(/\s+/g, ' ');
+      return t.length > 34 ? t.slice(0, 34) + '…' : t;
     }
-    return [{ ...WELCOME }];
+    return 'Nova conversa';
   }
 
   // ========================================================
@@ -136,17 +126,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const wrapper = document.createElement('div');
     wrapper.className = `message-wrapper ${isUser ? 'message-user' : 'message-coach'}`;
 
-    const copyBtn = isUser
-      ? ''
-      : `<button class="btn-copy" title="Copiar resposta" aria-label="Copiar resposta">
-           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-           </svg>
-         </button>`;
+    const copyBtn = isUser ? '' :
+      `<button class="btn-copy" title="Copiar resposta" aria-label="Copiar resposta">
+         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+           <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+           <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+         </svg>
+       </button>`;
 
-    const avatar = isUser
-      ? '🧑'
+    const avatar = isUser ? '🧑'
       : '<img src="logo-icon.png" alt="NutriFit" class="msg-logo" onerror="this.replaceWith(document.createTextNode(\'💪\'))">';
 
     wrapper.innerHTML = `
@@ -157,10 +145,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <span class="message-time">${msg.time || nowTime()}</span>
           ${copyBtn}
         </div>
-      </div>
-    `;
+      </div>`;
 
-    // Botão copiar (bônus)
     const btnCopy = wrapper.querySelector('.btn-copy');
     if (btnCopy) {
       btnCopy.addEventListener('click', async () => {
@@ -168,106 +154,186 @@ document.addEventListener('DOMContentLoaded', () => {
           await navigator.clipboard.writeText(msg.content);
           btnCopy.classList.add('copied');
           setTimeout(() => btnCopy.classList.remove('copied'), 1200);
-        } catch (e) {
-          console.warn('Falha ao copiar:', e);
-        }
+        } catch (e) { console.warn('Falha ao copiar:', e); }
       });
     }
-
     chatMessages.appendChild(wrapper);
   }
 
-  function renderAll() {
+  function renderActive() {
     if (!chatMessages) return;
     chatMessages.innerHTML = '';
-    messages.forEach(renderMessage);
+    const conv = getActive();
+    if (conv) conv.messages.forEach(renderMessage);
     updateCounter();
     scrollToBottom();
   }
 
+  function updateCounter() {
+    if (!msgCounter) return;
+    const conv = getActive();
+    const n = conv ? conv.messages.length : 0;
+    msgCounter.textContent = `${n} ${n === 1 ? 'msg' : 'msgs'}`;
+  }
+
   // ========================================================
-  // Envio de mensagem (Fetch)
+  // Painel lateral (lista de conversas)
+  // ========================================================
+  function renderSidebar() {
+    if (!listaConversas) return;
+    listaConversas.innerHTML = '';
+
+    const ordenadas = [...store.conversas].sort((a, b) => b.updatedAt - a.updatedAt);
+    const termo = filtroBusca.trim().toLowerCase();
+    const filtradas = !termo ? ordenadas : ordenadas.filter(c =>
+      tituloDaConversa(c).toLowerCase().includes(termo) ||
+      c.messages.some(m => (m.content || '').toLowerCase().includes(termo))
+    );
+
+    if (!filtradas.length) {
+      listaConversas.innerHTML = `<div class="lista-vazia">${termo ? 'Nenhuma conversa encontrada.' : 'Nenhuma conversa ainda.'}</div>`;
+      return;
+    }
+
+    filtradas.forEach(conv => {
+      const item = document.createElement('div');
+      item.className = `conversa-item ${conv.id === store.activeId ? 'active' : ''}`;
+      item.dataset.id = conv.id;
+      item.innerHTML = `
+        <span class="conversa-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </span>
+        <span class="conversa-titulo">${escapeHtml(tituloDaConversa(conv))}</span>
+        <button class="conversa-del" title="Excluir conversa" aria-label="Excluir conversa">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        </button>`;
+
+      item.addEventListener('click', (e) => {
+        if (e.target.closest('.conversa-del')) return;
+        switchConversation(conv.id);
+      });
+      item.querySelector('.conversa-del').addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteConversation(conv.id);
+      });
+
+      listaConversas.appendChild(item);
+    });
+  }
+
+  function switchConversation(id) {
+    if (id === store.activeId) { closeSidebar(); return; }
+    store.activeId = id;
+    saveStore();
+    renderActive();
+    renderSidebar();
+    closeSidebar();
+    if (chatInput) chatInput.focus();
+  }
+
+  function newConversation() {
+    const c = novaConversaObj();
+    store.conversas.unshift(c);
+    store.activeId = c.id;
+    saveStore();
+    renderActive();
+    renderSidebar();
+    closeSidebar();
+    if (chatInput) chatInput.focus();
+  }
+
+  async function deleteConversation(id) {
+    const conv = store.conversas.find(c => c.id === id);
+    if (!conv) return;
+    if (!confirm(`Excluir a conversa "${tituloDaConversa(conv)}"?`)) return;
+
+    // Limpa o histórico dessa conversa no servidor
+    try {
+      await fetch(`${API_BASE_URL}/nova-conversa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversaId: id }),
+      });
+    } catch (err) { console.warn('Erro ao limpar no servidor:', err); }
+
+    store.conversas = store.conversas.filter(c => c.id !== id);
+    if (!store.conversas.length) {
+      const c = novaConversaObj();
+      store.conversas.push(c);
+      store.activeId = c.id;
+    } else if (store.activeId === id) {
+      store.activeId = store.conversas[0].id;
+    }
+    saveStore();
+    renderActive();
+    renderSidebar();
+  }
+
+  // ========================================================
+  // Envio de mensagem
   // ========================================================
   async function handleSendMessage(messageText) {
     const text = (messageText || '').trim();
     if (!text || isSending) return;
+    const conv = getActive();
+    if (!conv) return;
 
-    // 1. Exibe e armazena a mensagem do usuário
     const userMsg = { role: 'user', content: text, time: nowTime() };
-    messages.push(userMsg);
+    conv.messages.push(userMsg);
+    conv.updatedAt = Date.now();
     renderMessage(userMsg);
     updateCounter();
-    saveHistory();
+    if (chatInput) chatInput.value = '';
+    renderSidebar(); // atualiza título/ordem
+    saveStore();
     scrollToBottom();
 
-    if (chatInput) chatInput.value = '';
-
-    // 2. Indicador de carregamento
     isSending = true;
     if (btnSend) btnSend.disabled = true;
     if (typingIndicator) typingIndicator.style.display = 'flex';
     scrollToBottom();
 
     try {
-      // 3. Envia para a API via Fetch (contrato: { mensagem } -> { response })
       const response = await fetch(`${API_BASE_URL}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mensagem: text }),
+        body: JSON.stringify({ mensagem: text, conversaId: conv.id }),
       });
-
-      if (!response.ok) {
-        throw new Error(`Erro na requisição: ${response.status} ${response.statusText}`);
-      }
+      if (!response.ok) throw new Error(`Erro na requisição: ${response.status} ${response.statusText}`);
 
       const data = await response.json();
       const reply = data.response || 'Não consegui responder agora, guerreiro. Tenta de novo em instantes!';
-
-      // 4. Exibe e armazena a resposta da IA
       const botMsg = { role: 'assistant', content: reply, time: nowTime() };
-      messages.push(botMsg);
+      conv.messages.push(botMsg);
+      conv.updatedAt = Date.now();
       renderMessage(botMsg);
     } catch (error) {
-      // 6. Tratamento de erros - mensagem amigável
       console.error('Erro ao conectar com a API:', error);
       const errMsg = {
         role: 'assistant',
         content: '⚠️ Ops! Não consegui falar com o servidor da NutriFit. Verifique se o backend está rodando (`npm start` na pasta `src`) e tente novamente.',
         time: nowTime(),
       };
-      messages.push(errMsg);
+      conv.messages.push(errMsg);
       renderMessage(errMsg);
     } finally {
       isSending = false;
       if (btnSend) btnSend.disabled = false;
       if (typingIndicator) typingIndicator.style.display = 'none';
       updateCounter();
-      saveHistory();
+      saveStore();
       scrollToBottom();
       if (chatInput) chatInput.focus();
     }
   }
 
   // ========================================================
-  // Nova Conversa (limpa mensagens e reinicia histórico)
-  // ========================================================
-  async function newConversation() {
-    if (!confirm('Deseja iniciar uma nova conversa com a NutriFit?')) return;
-
-    try {
-      await fetch(`${API_BASE_URL}/nova-conversa`, { method: 'POST' });
-    } catch (err) {
-      console.warn('Erro ao reiniciar histórico no servidor:', err);
-    }
-
-    messages = [{ ...WELCOME, time: 'Agora' }];
-    saveHistory();
-    renderAll();
-    if (chatInput) chatInput.focus();
-  }
-
-  // ========================================================
-  // Tema Claro / Escuro (bônus)
+  // Tema Claro / Escuro
   // ========================================================
   function applyTheme(theme) {
     const dark = theme === 'dark';
@@ -275,7 +341,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (iconMoon) iconMoon.style.display = dark ? 'none' : 'block';
     if (iconSun) iconSun.style.display = dark ? 'block' : 'none';
   }
-
   function toggleTheme() {
     const current = document.documentElement.getAttribute('data-theme') || 'light';
     const next = current === 'dark' ? 'light' : 'dark';
@@ -284,26 +349,31 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ========================================================
+  // Sidebar (abrir/fechar no celular)
+  // ========================================================
+  function openSidebar() {
+    if (appShell) appShell.classList.add('sidebar-open');
+    if (sidebarOverlay) sidebarOverlay.hidden = false;
+  }
+  function closeSidebar() {
+    if (appShell) appShell.classList.remove('sidebar-open');
+    if (sidebarOverlay) sidebarOverlay.hidden = true;
+  }
+
+  // ========================================================
   // Eventos
   // ========================================================
   if (chatForm) {
-    // Enviar com o botão (submit do formulário)
     chatForm.addEventListener('submit', (e) => {
       e.preventDefault();
       if (chatInput) handleSendMessage(chatInput.value);
     });
   }
-
-  // Enviar com Enter (Shift+Enter não envia)
   if (chatInput) {
     chatInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        handleSendMessage(chatInput.value);
-      }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(chatInput.value); }
     });
   }
-
   chipButtons.forEach(chip => {
     chip.addEventListener('click', () => {
       const prompt = chip.dataset.prompt;
@@ -311,22 +381,32 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  if (btnNovaConversa) btnNovaConversa.addEventListener('click', newConversation);
   if (btnNewChat) btnNewChat.addEventListener('click', newConversation);
   if (btnToggleTheme) btnToggleTheme.addEventListener('click', toggleTheme);
+  if (btnToggleSidebar) btnToggleSidebar.addEventListener('click', openSidebar);
+  if (btnCloseSidebar) btnCloseSidebar.addEventListener('click', closeSidebar);
+  if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeSidebar);
+  if (searchConversas) searchConversas.addEventListener('input', (e) => {
+    filtroBusca = e.target.value || '';
+    renderSidebar();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeSidebar();
+  });
 
   // ========================================================
   // Inicialização
   // ========================================================
   (function init() {
-    // Tema salvo
     let theme = 'light';
     try { theme = localStorage.getItem(THEME_KEY) || 'light'; } catch (e) { /* ignora */ }
     applyTheme(theme);
 
-    // Histórico salvo
-    messages = loadHistory();
-    renderAll();
-
+    loadStore();
+    renderActive();
+    renderSidebar();
     if (chatInput) chatInput.focus();
   })();
 });

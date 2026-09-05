@@ -10,97 +10,142 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-  <!-- Aplicativo de Chat (tela única) -->
-  <div class="chat-app">
+  <div class="app-shell">
 
-    <!-- Cabeçalho do NutriFit -->
-    <header class="chat-topbar">
-      <div class="coach-profile">
-        <div class="coach-avatar">
-          <img src="logo-icon.png" alt="NutriFit" class="avatar-logo"
-               onerror="this.style.display='none'; this.nextElementSibling.hidden=false;">
-          <span class="avatar-emoji" hidden>💪</span>
-          <span class="online-dot" title="Online"></span>
+    <!-- ===================== Painel lateral (Projetos/Conversas) ===================== -->
+    <aside class="sidebar" id="sidebar" aria-label="Painel de conversas">
+      <div class="sidebar-top">
+        <div class="sidebar-brand">
+          <img src="logo-icon.png" alt="NutriFit" class="sidebar-logo">
+          <span>NutriFit</span>
         </div>
-        <div class="coach-info">
-          <h1 class="coach-name">NutriFit</h1>
-          <p class="coach-status">
-            <span class="status-pulse"></span>
-            Alimentação · Treino · Resultados
-          </p>
-        </div>
-      </div>
-
-      <div class="topbar-actions">
-        <span id="msgCounter" class="msg-counter" title="Mensagens na conversa">0 msgs</span>
-
-        <button id="btnToggleTheme" class="btn-icon-top" title="Alternar tema claro/escuro" aria-label="Alternar tema">
-          <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-          </svg>
-          <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
-            <circle cx="12" cy="12" r="5"></circle>
-            <line x1="12" y1="1" x2="12" y2="3"></line>
-            <line x1="12" y1="21" x2="12" y2="23"></line>
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-            <line x1="1" y1="12" x2="3" y2="12"></line>
-            <line x1="21" y1="12" x2="23" y2="12"></line>
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-          </svg>
-        </button>
-
-        <button id="btnNewChat" class="btn-icon-top" title="Nova conversa" aria-label="Nova conversa">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 20h9"></path>
-            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path>
+        <button id="btnCloseSidebar" class="sidebar-close" aria-label="Fechar menu">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
           </svg>
         </button>
       </div>
-    </header>
 
-    <!-- Área de Mensagens -->
-    <main id="chatMessages" class="chat-messages" aria-live="polite"></main>
+      <button id="btnNovaConversa" class="btn-nova-conversa">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        Nova conversa
+      </button>
 
-    <!-- Indicador de Carregamento (Pensando...) -->
-    <div id="typingIndicator" class="typing-indicator" style="display: none;">
-      <div class="message-avatar"><img src="logo-icon.png" alt="NutriFit" class="msg-logo"></div>
-      <div class="typing-bubble">
-        <span class="typing-dot"></span>
-        <span class="typing-dot"></span>
-        <span class="typing-dot"></span>
-        <span class="typing-text">NutriFit está pensando...</span>
+      <div class="sidebar-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input id="searchConversas" type="text" placeholder="Buscar conversas..." autocomplete="off">
       </div>
+
+      <div class="sidebar-section-label">Conversas</div>
+      <nav id="listaConversas" class="lista-conversas" aria-label="Lista de conversas"></nav>
+
+      <div class="sidebar-footer">
+        <span class="status-pulse"></span>
+        Alimentação · Treino · Resultados
+      </div>
+    </aside>
+
+    <!-- Overlay para fechar o menu no celular -->
+    <div class="sidebar-overlay" id="sidebarOverlay" hidden></div>
+
+    <!-- ===================== Chat ===================== -->
+    <div class="chat-app">
+
+      <header class="chat-topbar">
+        <div class="topbar-left">
+          <button id="btnToggleSidebar" class="btn-hamburger" aria-label="Abrir menu">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          <div class="coach-profile">
+            <div class="coach-avatar">
+              <img src="logo-icon.png" alt="NutriFit" class="avatar-logo"
+                   onerror="this.style.display='none'; this.nextElementSibling.hidden=false;">
+              <span class="avatar-emoji" hidden>💪</span>
+              <span class="online-dot" title="Online"></span>
+            </div>
+            <div class="coach-info">
+              <h1 class="coach-name">NutriFit</h1>
+              <p class="coach-status">
+                <span class="status-pulse"></span>
+                Alimentação · Treino · Resultados
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <span id="msgCounter" class="msg-counter" title="Mensagens na conversa">0 msgs</span>
+
+          <button id="btnToggleTheme" class="btn-icon-top" title="Alternar tema claro/escuro" aria-label="Alternar tema">
+            <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+            <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+          </button>
+
+          <button id="btnNewChat" class="btn-icon-top" title="Nova conversa" aria-label="Nova conversa">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Área de Mensagens -->
+      <main id="chatMessages" class="chat-messages" aria-live="polite"></main>
+
+      <!-- Indicador de Carregamento -->
+      <div id="typingIndicator" class="typing-indicator" style="display: none;">
+        <div class="message-avatar"><img src="logo-icon.png" alt="NutriFit" class="msg-logo"></div>
+        <div class="typing-bubble">
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+          <span class="typing-text">NutriFit está pensando...</span>
+        </div>
+      </div>
+
+      <!-- Rodapé: sugestões + campo de texto -->
+      <footer class="chat-footer">
+        <div class="chat-chips" id="chatChips">
+          <button class="chip-btn" data-prompt="Monte uma rotina diária completa pra eu seguir">📅 Rotina diária</button>
+          <button class="chip-btn" data-prompt="Monte uma divisão de treino ABC para hipertrofia">🏋️ Treino ABC</button>
+          <button class="chip-btn" data-prompt="Como calcular minha meta de proteína diária?">🥩 Meta de proteína</button>
+          <button class="chip-btn" data-prompt="O que comer no pré-treino para ter mais energia?">⚡ Pré-treino</button>
+          <button class="chip-btn" data-prompt="Quanta água devo beber por dia?">💧 Hidratação</button>
+        </div>
+
+        <form id="chatForm" class="chat-input-form">
+          <input
+            type="text"
+            id="chatInput"
+            class="chat-input"
+            placeholder="Escreva sua mensagem para a NutriFit..."
+            autocomplete="off"
+            required
+          >
+          <button type="submit" id="btnSendMessage" class="btn-send" aria-label="Enviar mensagem">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        </form>
+      </footer>
     </div>
-
-    <!-- Rodapé: sugestões + campo de texto -->
-    <footer class="chat-footer">
-      <div class="chat-chips" id="chatChips">
-        <button class="chip-btn" data-prompt="Monte uma rotina diária completa pra eu seguir">📅 Rotina diária</button>
-        <button class="chip-btn" data-prompt="Monte uma divisão de treino ABC para hipertrofia">🏋️ Treino ABC</button>
-        <button class="chip-btn" data-prompt="Como calcular minha meta de proteína diária?">🥩 Meta de proteína</button>
-        <button class="chip-btn" data-prompt="O que comer no pré-treino para ter mais energia?">⚡ Pré-treino</button>
-        <button class="chip-btn" data-prompt="Quanta água devo beber por dia?">💧 Hidratação</button>
-      </div>
-
-      <form id="chatForm" class="chat-input-form">
-        <input
-          type="text"
-          id="chatInput"
-          class="chat-input"
-          placeholder="Escreva sua mensagem para a NutriFit..."
-          autocomplete="off"
-          required
-        >
-        <button type="submit" id="btnSendMessage" class="btn-send" aria-label="Enviar mensagem">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
-        </button>
-      </form>
-    </footer>
   </div>
 
   <script src="nutricao.js"></script>

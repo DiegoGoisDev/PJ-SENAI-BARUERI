@@ -23,18 +23,25 @@ const pagesPath = path.join(__dirname, '..', 'pages');
 app.use(express.static(pagesPath));
 
 /**
- * Histórico da conversa mantido em memória (sem banco de dados),
- * conforme exigido pela situação de aprendizagem.
- * Cada item: { role: 'user' | 'assistant', content: string }
+ * Histórico mantido em memória (sem banco de dados), separado por conversa.
+ * Chave: conversaId (string) | Valor: array de { role, content }
+ * Isso permite vários "projetos"/conversas no painel lateral, cada um com
+ * seu próprio contexto. Sem conversaId, usa a conversa 'default'.
  */
-let messages = [];
+const conversas = new Map();
+
+function getHistorico(conversaId) {
+  const id = conversaId || 'default';
+  if (!conversas.has(id)) conversas.set(id, []);
+  return conversas.get(id);
+}
 
 // ==================== ROTAS DA API ==================== //
 
 /**
  * Rota principal do chat.
  * POST /chat
- * Entrada: { "mensagem": "Oi" }
+ * Entrada: { "mensagem": "Oi" }  (opcional: "conversaId" para múltiplas conversas)
  * Saída:   { "response": "Olá! Como posso ajudá-lo hoje?" }
  *
  * Fluxo: recebe a mensagem -> adiciona o System Prompt (dentro de askPersonalTrainer)
@@ -42,7 +49,7 @@ let messages = [];
  */
 app.post('/chat', async (req, res) => {
   try {
-    const { mensagem } = req.body;
+    const { mensagem, conversaId } = req.body;
 
     if (!mensagem || typeof mensagem !== 'string' || !mensagem.trim()) {
       return res.status(400).json({
@@ -51,6 +58,7 @@ app.post('/chat', async (req, res) => {
     }
 
     const cleanMessage = mensagem.trim();
+    const messages = getHistorico(conversaId);
 
     // Guarda a mensagem do usuário no histórico da conversa
     messages.push({ role: 'user', content: cleanMessage });
@@ -72,11 +80,16 @@ app.post('/chat', async (req, res) => {
 });
 
 /**
- * Nova Conversa: limpa o histórico armazenado em memória.
- * POST /nova-conversa
+ * Nova Conversa: limpa o histórico em memória (de uma conversa específica ou de todas).
+ * POST /nova-conversa   Body opcional: { "conversaId": "..." }
  */
 app.post('/nova-conversa', (req, res) => {
-  messages = [];
+  const { conversaId } = req.body || {};
+  if (conversaId) {
+    conversas.delete(conversaId);
+  } else {
+    conversas.clear();
+  }
   return res.status(200).json({
     response: 'Conversa reiniciada com sucesso.',
   });
@@ -87,10 +100,13 @@ app.post('/nova-conversa', (req, res) => {
  * GET /health
  */
 app.get('/health', (req, res) => {
+  let total = 0;
+  for (const msgs of conversas.values()) total += msgs.length;
   return res.status(200).json({
     status: 'online',
     agent: 'NutriFit - Alimentação, Treino & Resultados',
-    messagesStored: messages.length,
+    conversas: conversas.size,
+    messagesStored: total,
     timestamp: new Date().toISOString(),
   });
 });
