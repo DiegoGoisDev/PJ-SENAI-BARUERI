@@ -1,7 +1,6 @@
-# Dependências
-node_modules/
-
 # Variáveis de ambiente (CONTÊM SEGREDOS — nunca versionar)
+node_modules/
+.env
 .env
 .env.local
 .env.*.local

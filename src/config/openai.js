@@ -382,16 +382,35 @@ export async function askPersonalTrainer(userMessage, history = []) {
     return generateFallbackResponse(userMessage, history);
   }
 
+  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const messages = [
+    { role: 'system', content: PERSONAL_TRAINER_SYSTEM_PROMPT },
+    ...history.slice(-8),
+  ];
+
   try {
-    const completion = await openaiClient.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-      temperature: 0.5,
-      max_tokens: 800,
-      messages: [
-        { role: 'system', content: PERSONAL_TRAINER_SYSTEM_PROMPT },
-        ...history.slice(-8),
-      ],
-    });
+    let completion;
+    try {
+      // Parâmetros padrão (compatíveis com gpt-4o e afins)
+      completion = await openaiClient.chat.completions.create({
+        model,
+        messages,
+        temperature: 0.5,
+        max_completion_tokens: 800,
+      });
+    } catch (err) {
+      // Modelos mais novos (ex.: geração GPT-5) podem rejeitar 'temperature'
+      // customizada ou outros parâmetros: tenta novamente no modo compatível.
+      if (err?.status === 400) {
+        completion = await openaiClient.chat.completions.create({
+          model,
+          messages,
+          max_completion_tokens: 800,
+        });
+      } else {
+        throw err;
+      }
+    }
 
     return completion.choices[0]?.message?.content?.trim() || generateFallbackResponse(userMessage, history);
   } catch (error) {
